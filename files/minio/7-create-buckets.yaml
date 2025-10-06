@@ -1,0 +1,57 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: create-buckets
+  namespace: parasol-demo
+spec:
+  backoffLimit: 4
+  template:
+    spec:
+      initContainers:
+      - name: wait-for-minio
+        image: image-registry.openshift-image-registry.svc:5000/openshift/tools:latest
+        imagePullPolicy: IfNotPresent
+        command: ["/bin/bash"]
+        args:
+        - -ec
+        - |-
+          echo -n "Waiting for MinIO service in parasol-demo namespace"
+          until curl -sSf --connect-timeout 2 http://minio.parasol-demo.svc.cluster.local:9000/minio/health/ready >/dev/null; do
+              echo -n '.'
+              sleep 1
+          done
+          echo "MinIO service is ready in parasol-demo namespace"
+      containers:
+      - name: add-model
+        image: quay.io/modh/odh-workbench-jupyter-datascience-cpu-py311-ubi9:rhoai-2.22
+        imagePullPolicy: IfNotPresent
+        command: ["/bin/bash"]
+        args:
+        - -ec
+        - |-
+          curl -LO https://rhods-public.s3.amazonaws.com/demo-models/ic-models/accident/accident_detect.onnx
+
+          cat << 'EOF' | python3
+          import boto3, os
+
+          s3 = boto3.client("s3",
+                            endpoint_url=os.getenv("AWS_S3_ENDPOINT"),
+                            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+                            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"))
+
+          # Create the models bucket
+          models_bucket_name = "models"
+          if models_bucket_name not in [bu["Name"] for bu in s3.list_buckets()["Buckets"]]:
+              s3.create_bucket(Bucket=models_bucket_name)
+
+          # uploading to minio
+          filename = "accident_detect.onnx"
+          with open(filename, "rb") as f:
+              s3.upload_fileobj(f, "models", f'accident/{filename}')
+
+          EOF
+        envFrom:
+        - secretRef:
+            name: aws-connection-minio
+      restartPolicy: Never

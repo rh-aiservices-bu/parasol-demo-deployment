@@ -1,0 +1,19 @@
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: aws-connection-minio
+  namespace: parasol-demo
+  labels:
+    opendatahub.io/dashboard: "true"
+    opendatahub.io/managed: "true"
+  annotations:
+    opendatahub.io/connection-type: s3
+    openshift.io/display-name: MinIO
+type: Opaque
+stringData:
+  AWS_ACCESS_KEY_ID: minio
+  AWS_SECRET_ACCESS_KEY: minio-parasol
+  AWS_DEFAULT_REGION: us
+  AWS_S3_ENDPOINT: http://minio.parasol-demo.svc.cluster.local:9000
+  AWS_S3_BUCKET: models
